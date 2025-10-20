@@ -804,17 +804,33 @@
 
         // 빈 공간 찾기
         function findEmptySpace(map) {
+            // 맵이 없으면 기본 위치 반환
+            if (!map || !Array.isArray(map) || map.length === 0) {
+                console.warn('Map data is invalid, returning default position');
+                return { x: 5, y: 5 };
+            }
+            
             let attempts = 0;
             while (attempts < 100) {
                 const x = Math.floor(Math.random() * (MAP_WIDTH - 4)) + 2;
                 const y = Math.floor(Math.random() * (MAP_HEIGHT - 4)) + 2;
                 
-                if (map[y][x] === TILE_TYPES.FLOOR) {
+                if (map[y] && map[y][x] !== undefined && map[y][x] === TILE_TYPES.FLOOR) {
                     return { x, y };
                 }
                 attempts++;
             }
-            return { x: 5, y: 5 }; // 기본 위치
+            
+            // 100번 시도해도 못 찾으면 강제로 빈 공간 찾기
+            for (let y = 2; y < MAP_HEIGHT - 2; y++) {
+                for (let x = 2; x < MAP_WIDTH - 2; x++) {
+                    if (map[y] && map[y][x] === TILE_TYPES.FLOOR) {
+                        return { x, y };
+                    }
+                }
+            }
+            
+            return { x: 5, y: 5 }; // 최종 기본 위치
         }
 
         // 방 참가하기
@@ -831,43 +847,61 @@
                 return;
             }
 
-            const roomSnapshot = await database.ref(`rooms/${roomCode}`).once('value');
-            if (!roomSnapshot.exists()) {
-                alert('존재하지 않는 방입니다!');
-                return;
+            try {
+                const roomSnapshot = await database.ref(`rooms/${roomCode}`).once('value');
+                if (!roomSnapshot.exists()) {
+                    alert('존재하지 않는 방입니다!');
+                    return;
+                }
+
+                const roomData = roomSnapshot.val();
+                const playerCount = Object.keys(roomData.players || {}).length;
+                
+                if (playerCount >= 10) {
+                    alert('방이 가득 찼습니다!');
+                    return;
+                }
+
+                currentRoom = roomCode;
+                isHost = false;
+                
+                // 맵 데이터 확인
+                let mapData = roomData.map;
+                if (!mapData || !Array.isArray(mapData) || mapData.length === 0) {
+                    mapData = generateOfficeMap();
+                }
+                
+                const startPos = findEmptySpace(mapData);
+                
+                currentPlayer = {
+                    id: Date.now().toString(),
+                    name: name,
+                    color: currentPlayer.color,
+                    x: startPos.x,
+                    y: startPos.y,
+                    isHost: false
+                };
+
+                await database.ref(`rooms/${roomCode}/players/${currentPlayer.id}`).set(currentPlayer);
+                showLobby();
+            } catch (error) {
+                console.error('Error joining room:', error);
+                alert('방 참가 중 오류가 발생했습니다: ' + error.message);
             }
-
-            const roomData = roomSnapshot.val();
-            const playerCount = Object.keys(roomData.players || {}).length;
-            
-            if (playerCount >= 10) {
-                alert('방이 가득 찼습니다!');
-                return;
-            }
-
-            currentRoom = roomCode;
-            isHost = false;
-            
-            const startPos = findEmptySpace(roomData.map);
-            
-            currentPlayer = {
-                id: Date.now().toString(),
-                name: name,
-                color: currentPlayer.color,
-                x: startPos.x,
-                y: startPos.y,
-                isHost: false
-            };
-
-            await database.ref(`rooms/${roomCode}/players/${currentPlayer.id}`).set(currentPlayer);
-            showLobby();
         }
 
         // 로비 표시
-        function showLobby() {
+        async function showLobby() {
             document.getElementById('startScreen').classList.remove('active');
             document.getElementById('lobbyScreen').classList.add('active');
             document.getElementById('displayRoomCode').textContent = currentRoom;
+            
+            // 맵 데이터 로드
+            const roomSnapshot = await database.ref(`rooms/${currentRoom}`).once('value');
+            const roomData = roomSnapshot.val();
+            if (roomData) {
+                gameState = roomData;
+            }
             
             if (isHost) {
                 document.getElementById('hostSettings').style.display = 'block';
@@ -900,45 +934,74 @@
 
         // 게임 시작
         async function startGame() {
-            const winningCount = parseInt(document.getElementById('winningTreasures').value);
-            
-            const playersSnapshot = await database.ref(`rooms/${currentRoom}/players`).once('value');
-            const players = playersSnapshot.val() || {};
-            const mapData = gameState.map || generateOfficeMap();
-            
-            // 보물 생성
-            const treasures = [];
-            const positions = new Set();
-            
-            // 플레이어 위치 제외
-            Object.values(players).forEach(player => {
-                positions.add(`${player.x},${player.y}`);
-            });
-            
-            // 빈 공간에 보물 배치
-            while (treasures.length < 30) {
-                const pos = findEmptySpace(mapData);
-                const key = `${pos.x},${pos.y}`;
+            try {
+                const winningCount = parseInt(document.getElementById('winningTreasures').value);
                 
-                if (!positions.has(key)) {
-                    positions.add(key);
-                    treasures.push({
-                        id: treasures.length,
-                        x: pos.x,
-                        y: pos.y,
-                        isWinning: treasures.length < winningCount,
-                        found: false
-                    });
+                // 현재 방 데이터 전체 로드
+                const roomSnapshot = await database.ref(`rooms/${currentRoom}`).once('value');
+                const roomData = roomSnapshot.val();
+                
+                if (!roomData) {
+                    alert('방 데이터를 불러올 수 없습니다!');
+                    return;
                 }
+                
+                const players = roomData.players || {};
+                let mapData = roomData.map;
+                
+                // 맵이 없으면 새로 생성
+                if (!mapData || !Array.isArray(mapData) || mapData.length === 0) {
+                    console.log('Generating new map...');
+                    mapData = generateOfficeMap();
+                }
+                
+                console.log('Map loaded:', mapData.length, 'x', mapData[0] ? mapData[0].length : 0);
+                
+                // 보물 생성
+                const treasures = [];
+                const positions = new Set();
+                
+                // 플레이어 위치 제외
+                Object.values(players).forEach(player => {
+                    if (player.x !== undefined && player.y !== undefined) {
+                        positions.add(`${player.x},${player.y}`);
+                    }
+                });
+                
+                // 빈 공간에 보물 배치
+                let attempts = 0;
+                while (treasures.length < 30 && attempts < 500) {
+                    attempts++;
+                    const pos = findEmptySpace(mapData);
+                    const key = `${pos.x},${pos.y}`;
+                    
+                    if (!positions.has(key)) {
+                        positions.add(key);
+                        treasures.push({
+                            id: treasures.length,
+                            x: pos.x,
+                            y: pos.y,
+                            isWinning: treasures.length < winningCount,
+                            found: false
+                        });
+                    }
+                }
+                
+                console.log('Treasures created:', treasures.length);
+
+                await database.ref(`rooms/${currentRoom}`).update({
+                    status: 'playing',
+                    map: mapData,
+                    treasures: treasures,
+                    winners: []
+                });
+
+                console.log('Game started successfully!');
+                showGame();
+            } catch (error) {
+                console.error('Error starting game:', error);
+                alert('게임 시작 중 오류가 발생했습니다: ' + error.message);
             }
-
-            await database.ref(`rooms/${currentRoom}`).update({
-                status: 'playing',
-                treasures: treasures,
-                winners: []
-            });
-
-            showGame();
         }
 
         // 게임 화면 표시
