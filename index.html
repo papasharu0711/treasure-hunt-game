@@ -56,7 +56,6 @@
             font-size: 1.5em;
         }
 
-        /* 색상 선택 */
         .color-selector {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -99,7 +98,6 @@
             text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
 
-        /* 슬라임 프리뷰 */
         .slime-preview {
             width: 100px;
             height: 100px;
@@ -112,7 +110,6 @@
             50% { transform: translateY(-10px); }
         }
 
-        /* 입력 필드 */
         input[type="text"], input[type="number"] {
             width: 100%;
             padding: 15px 20px;
@@ -137,7 +134,6 @@
             width: 100%;
         }
 
-        /* 버튼 */
         button {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -167,7 +163,6 @@
             box-shadow: none;
         }
 
-        /* 플레이어 리스트 */
         .player-list {
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             padding: 25px;
@@ -198,7 +193,6 @@
             margin-right: 15px;
         }
 
-        /* 게임 컨테이너 */
         .game-container {
             display: flex;
             gap: 20px;
@@ -216,28 +210,25 @@
             gap: 15px;
         }
 
-        /* 게임 맵 */
         #gameCanvas {
             border: 6px solid #333;
             border-radius: 15px;
             display: block;
             margin: 0 auto;
-            background: #8bc34a;
+            background: #4a5568;
             box-shadow: 0 10px 40px rgba(0,0,0,0.4);
             image-rendering: pixelated;
         }
 
-        /* 미니맵 */
         #minimap {
             border: 4px solid #333;
             border-radius: 10px;
             width: 100%;
             height: 180px;
-            background: #8bc34a;
+            background: #4a5568;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
-        /* 게임 정보 */
         .game-info {
             display: flex;
             flex-direction: column;
@@ -271,7 +262,6 @@
             background-clip: text;
         }
 
-        /* 컨트롤 가이드 */
         .controls-guide {
             background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
             padding: 20px;
@@ -288,7 +278,6 @@
             font-weight: 600;
         }
 
-        /* 모달 */
         .modal {
             display: none;
             position: fixed;
@@ -334,7 +323,6 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
 
-        /* 결과 화면 */
         .winner-list {
             background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
             padding: 30px;
@@ -370,7 +358,6 @@
             min-width: 60px;
         }
 
-        /* 설정 섹션 */
         .settings-section {
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             padding: 25px;
@@ -390,17 +377,6 @@
             gap: 15px;
             margin-top: 20px;
             flex-wrap: wrap;
-        }
-
-        /* 로딩 애니메이션 */
-        @keyframes shimmer {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
-
-        .loading {
-            animation: shimmer 1.5s ease-in-out infinite;
         }
     </style>
 </head>
@@ -466,7 +442,7 @@
 
         <!-- 게임 화면 -->
         <div id="gameScreen" class="screen">
-            <h1>🎮 Treasure Hunt</h1>
+            <h1>🏢 Office Treasure Hunt</h1>
             
             <div class="game-container">
                 <div class="game-main">
@@ -474,6 +450,7 @@
                     
                     <div class="controls-guide">
                         <p>🎮 <strong>방향키</strong>로 이동 | 🎁 <strong>스페이스바</strong>로 보물상자 열기</p>
+                        <p style="color: #e67e22;">💡 벽과 가구는 통과할 수 없어요!</p>
                     </div>
                 </div>
                 
@@ -555,13 +532,16 @@
         let gameState = {
             players: {},
             treasures: [],
-            winners: []
+            winners: [],
+            map: []
         };
 
+        // 카메라 설정
+        let camera = { x: 0, y: 0 };
+
         // 애니메이션 상태
-        let playerAnimations = {};
         let lastMoveTime = 0;
-        const MOVE_DELAY = 150; // 이동 딜레이 (ms)
+        const MOVE_DELAY = 150;
 
         // 캔버스 설정
         const canvas = document.getElementById('gameCanvas');
@@ -570,17 +550,140 @@
         const minimapCtx = minimap ? minimap.getContext('2d') : null;
         
         const TILE_SIZE = 40;
-        const MAP_WIDTH = 20;
-        const MAP_HEIGHT = 15;
+        const MAP_WIDTH = 60;  // 확장된 맵 크기
+        const MAP_HEIGHT = 45;
+        const VIEWPORT_WIDTH = 20;  // 화면에 보이는 타일 수
+        const VIEWPORT_HEIGHT = 15;
 
         // 보물상자 애니메이션
         let treasureAnimation = 0;
+
+        // 타일 타입
+        const TILE_TYPES = {
+            FLOOR: 0,
+            WALL: 1,
+            DESK: 2,
+            CHAIR: 3,
+            SOFA: 4,
+            PLANT: 5,
+            CABINET: 6
+        };
 
         // 색상 옵션
         const colors = [
             '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
             '#1abc9c', '#e67e22', '#34495e', '#ff69b4', '#00ced1'
         ];
+
+        // 맵 생성 (사무실 레이아웃)
+        function generateOfficeMap() {
+            const map = [];
+            
+            // 기본 바닥으로 초기화
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                map[y] = [];
+                for (let x = 0; x < MAP_WIDTH; x++) {
+                    map[y][x] = TILE_TYPES.FLOOR;
+                }
+            }
+            
+            // 외벽
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                map[0][x] = TILE_TYPES.WALL;
+                map[MAP_HEIGHT - 1][x] = TILE_TYPES.WALL;
+            }
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                map[y][0] = TILE_TYPES.WALL;
+                map[y][MAP_WIDTH - 1] = TILE_TYPES.WALL;
+            }
+            
+            // 내부 벽 (미로 형태)
+            // 수평 벽
+            for (let x = 5; x < 25; x++) {
+                if (x !== 15) map[10][x] = TILE_TYPES.WALL;
+            }
+            for (let x = 35; x < 55; x++) {
+                if (x !== 45) map[10][x] = TILE_TYPES.WALL;
+            }
+            for (let x = 10; x < 30; x++) {
+                if (x !== 20) map[25][x] = TILE_TYPES.WALL;
+            }
+            for (let x = 30; x < 50; x++) {
+                if (x !== 40) map[35][x] = TILE_TYPES.WALL;
+            }
+            
+            // 수직 벽
+            for (let y = 5; y < 20; y++) {
+                if (y !== 12) map[y][15] = TILE_TYPES.WALL;
+            }
+            for (let y = 15; y < 30; y++) {
+                if (y !== 22) map[y][30] = TILE_TYPES.WALL;
+            }
+            for (let y = 20; y < 40; y++) {
+                if (y !== 30) map[y][45] = TILE_TYPES.WALL;
+            }
+            
+            // 사무실 가구 배치
+            // 책상 그룹
+            const deskPositions = [
+                [5, 5], [7, 5], [9, 5],
+                [20, 15], [22, 15], [24, 15],
+                [35, 20], [37, 20], [39, 20],
+                [10, 30], [12, 30], [14, 30],
+                [50, 10], [52, 10], [50, 12], [52, 12]
+            ];
+            deskPositions.forEach(([x, y]) => {
+                if (map[y] && map[y][x]) map[y][x] = TILE_TYPES.DESK;
+            });
+            
+            // 의자
+            const chairPositions = [
+                [5, 6], [7, 6], [9, 6],
+                [20, 16], [22, 16], [24, 16],
+                [10, 31], [12, 31], [14, 31]
+            ];
+            chairPositions.forEach(([x, y]) => {
+                if (map[y] && map[y][x]) map[y][x] = TILE_TYPES.CHAIR;
+            });
+            
+            // 소파
+            const sofaPositions = [
+                [40, 5], [41, 5], [42, 5],
+                [25, 30], [26, 30], [27, 30]
+            ];
+            sofaPositions.forEach(([x, y]) => {
+                if (map[y] && map[y][x]) map[y][x] = TILE_TYPES.SOFA;
+            });
+            
+            // 화분
+            const plantPositions = [
+                [3, 3], [55, 3], [3, 40], [55, 40],
+                [18, 8], [32, 18], [42, 28]
+            ];
+            plantPositions.forEach(([x, y]) => {
+                if (map[y] && map[y][x]) map[y][x] = TILE_TYPES.PLANT;
+            });
+            
+            // 캐비닛
+            const cabinetPositions = [
+                [2, 20], [2, 21], [57, 20], [57, 21],
+                [28, 5], [29, 5]
+            ];
+            cabinetPositions.forEach(([x, y]) => {
+                if (map[y] && map[y][x]) map[y][x] = TILE_TYPES.CABINET;
+            });
+            
+            return map;
+        }
+
+        // 충돌 체크
+        function isWalkable(x, y) {
+            if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return false;
+            if (!gameState.map || !gameState.map[y]) return true;
+            
+            const tile = gameState.map[y][x];
+            return tile === TILE_TYPES.FLOOR;
+        }
 
         // 슬라임 색상 선택기 생성
         function initColorSelector() {
@@ -670,16 +773,19 @@
             currentRoom = roomCode;
             isHost = true;
             
+            // 빈 공간 찾기
+            const startPos = findEmptySpace(generateOfficeMap());
+            
             currentPlayer = {
                 id: Date.now().toString(),
                 name: name,
                 color: currentPlayer.color,
-                x: Math.floor(Math.random() * MAP_WIDTH),
-                y: Math.floor(Math.random() * MAP_HEIGHT),
-                targetX: null,
-                targetY: null,
+                x: startPos.x,
+                y: startPos.y,
                 isHost: true
             };
+
+            const officeMap = generateOfficeMap();
 
             await database.ref(`rooms/${roomCode}`).set({
                 host: currentPlayer.id,
@@ -687,12 +793,28 @@
                 settings: {
                     winningTreasures: 3
                 },
+                map: officeMap,
                 players: {
                     [currentPlayer.id]: currentPlayer
                 }
             });
 
             showLobby();
+        }
+
+        // 빈 공간 찾기
+        function findEmptySpace(map) {
+            let attempts = 0;
+            while (attempts < 100) {
+                const x = Math.floor(Math.random() * (MAP_WIDTH - 4)) + 2;
+                const y = Math.floor(Math.random() * (MAP_HEIGHT - 4)) + 2;
+                
+                if (map[y][x] === TILE_TYPES.FLOOR) {
+                    return { x, y };
+                }
+                attempts++;
+            }
+            return { x: 5, y: 5 }; // 기본 위치
         }
 
         // 방 참가하기
@@ -726,14 +848,14 @@
             currentRoom = roomCode;
             isHost = false;
             
+            const startPos = findEmptySpace(roomData.map);
+            
             currentPlayer = {
                 id: Date.now().toString(),
                 name: name,
                 color: currentPlayer.color,
-                x: Math.floor(Math.random() * MAP_WIDTH),
-                y: Math.floor(Math.random() * MAP_HEIGHT),
-                targetX: null,
-                targetY: null,
+                x: startPos.x,
+                y: startPos.y,
                 isHost: false
             };
 
@@ -752,7 +874,6 @@
                 document.getElementById('startGameBtn').style.display = 'inline-block';
             }
 
-            // 플레이어 리스트 실시간 업데이트
             database.ref(`rooms/${currentRoom}/players`).on('value', (snapshot) => {
                 const players = snapshot.val() || {};
                 updatePlayerList(players);
@@ -781,39 +902,30 @@
         async function startGame() {
             const winningCount = parseInt(document.getElementById('winningTreasures').value);
             
-            // 현재 플레이어들의 위치 재확인
             const playersSnapshot = await database.ref(`rooms/${currentRoom}/players`).once('value');
             const players = playersSnapshot.val() || {};
-            
-            // 각 플레이어의 위치가 없으면 랜덤 배치
-            Object.keys(players).forEach(playerId => {
-                if (players[playerId].x === undefined || players[playerId].y === undefined) {
-                    players[playerId].x = Math.floor(Math.random() * MAP_WIDTH);
-                    players[playerId].y = Math.floor(Math.random() * MAP_HEIGHT);
-                }
-            });
+            const mapData = gameState.map || generateOfficeMap();
             
             // 보물 생성
             const treasures = [];
             const positions = new Set();
             
-            // 플레이어 위치도 제외
+            // 플레이어 위치 제외
             Object.values(players).forEach(player => {
                 positions.add(`${player.x},${player.y}`);
             });
             
-            // 중복되지 않는 위치에 보물 배치
-            while (treasures.length < 20) {
-                const x = Math.floor(Math.random() * MAP_WIDTH);
-                const y = Math.floor(Math.random() * MAP_HEIGHT);
-                const key = `${x},${y}`;
+            // 빈 공간에 보물 배치
+            while (treasures.length < 30) {
+                const pos = findEmptySpace(mapData);
+                const key = `${pos.x},${pos.y}`;
                 
                 if (!positions.has(key)) {
                     positions.add(key);
                     treasures.push({
                         id: treasures.length,
-                        x: x,
-                        y: y,
+                        x: pos.x,
+                        y: pos.y,
                         isWinning: treasures.length < winningCount,
                         found: false
                     });
@@ -822,15 +934,8 @@
 
             await database.ref(`rooms/${currentRoom}`).update({
                 status: 'playing',
-                players: players,
                 treasures: treasures,
                 winners: []
-            });
-            
-            console.log('Game started with:', {
-                players: Object.keys(players).length,
-                treasures: treasures.length,
-                winning: winningCount
             });
 
             showGame();
@@ -841,38 +946,32 @@
             document.getElementById('lobbyScreen').classList.remove('active');
             document.getElementById('gameScreen').classList.add('active');
             
-            // 게임 상태 먼저 로드
             const roomSnapshot = await database.ref(`rooms/${currentRoom}`).once('value');
             const room = roomSnapshot.val();
             
             if (room) {
                 gameState = room;
-                console.log('Game State Loaded:', gameState);
-                console.log('Players:', Object.keys(gameState.players || {}).length);
-                console.log('Treasures:', (gameState.treasures || []).length);
                 
-                // 현재 플레이어 정보 업데이트
                 if (gameState.players && gameState.players[currentPlayer.id]) {
                     currentPlayer = gameState.players[currentPlayer.id];
                 }
                 
+                // 카메라를 플레이어 중심으로
+                updateCamera();
                 updateGameInfo();
-                
-                // 첫 렌더링
                 drawGame();
             }
             
-            // 게임 상태 실시간 동기화
             database.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
                 const room = snapshot.val();
                 if (room) {
                     gameState = room;
                     
-                    // 현재 플레이어 정보 업데이트
                     if (gameState.players && gameState.players[currentPlayer.id]) {
                         currentPlayer = gameState.players[currentPlayer.id];
                     }
                     
+                    updateCamera();
                     updateGameInfo();
                     
                     if (room.status === 'finished') {
@@ -881,10 +980,7 @@
                 }
             });
 
-            // 키보드 컨트롤
             setupControls();
-            
-            // 게임 루프 시작
             gameLoop();
         }
 
@@ -898,14 +994,120 @@
             document.getElementById('activePlayers').textContent = Object.keys(gameState.players || {}).length;
         }
 
-        // 맵 그리기 (향상된 타일 디자인)
+        // 카메라 업데이트
+        function updateCamera() {
+            if (!currentPlayer) return;
+            
+            // 플레이어를 화면 중앙에
+            camera.x = currentPlayer.x - Math.floor(VIEWPORT_WIDTH / 2);
+            camera.y = currentPlayer.y - Math.floor(VIEWPORT_HEIGHT / 2);
+            
+            // 맵 경계 제한
+            camera.x = Math.max(0, Math.min(camera.x, MAP_WIDTH - VIEWPORT_WIDTH));
+            camera.y = Math.max(0, Math.min(camera.y, MAP_HEIGHT - VIEWPORT_HEIGHT));
+        }
+
+        // 타일 그리기
+        function drawTile(x, y, offsetX, offsetY) {
+            if (!gameState.map || !gameState.map[y] || gameState.map[y][x] === undefined) return;
+            
+            const tileType = gameState.map[y][x];
+            const px = offsetX * TILE_SIZE;
+            const py = offsetY * TILE_SIZE;
+            
+            switch(tileType) {
+                case TILE_TYPES.FLOOR:
+                    // 바닥
+                    const isDark = (x + y) % 2 === 0;
+                    ctx.fillStyle = isDark ? '#cbd5e0' : '#e2e8f0';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    break;
+                    
+                case TILE_TYPES.WALL:
+                    // 벽
+                    const wallGradient = ctx.createLinearGradient(px, py, px, py + TILE_SIZE);
+                    wallGradient.addColorStop(0, '#4a5568');
+                    wallGradient.addColorStop(1, '#2d3748');
+                    ctx.fillStyle = wallGradient;
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.strokeStyle = '#1a202c';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+                    break;
+                    
+                case TILE_TYPES.DESK:
+                    // 책상
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#8b4513';
+                    ctx.fillRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+                    ctx.strokeStyle = '#654321';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+                    break;
+                    
+                case TILE_TYPES.CHAIR:
+                    // 의자
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#4a5568';
+                    ctx.fillRect(px + 8, py + 8, TILE_SIZE - 16, TILE_SIZE - 16);
+                    ctx.fillStyle = '#2d3748';
+                    ctx.fillRect(px + 10, py + 5, TILE_SIZE - 20, 8);
+                    break;
+                    
+                case TILE_TYPES.SOFA:
+                    // 소파
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#805ad5';
+                    ctx.fillRect(px + 2, py + 5, TILE_SIZE - 4, TILE_SIZE - 10);
+                    ctx.fillStyle = '#6b46c1';
+                    ctx.fillRect(px + 2, py + 5, TILE_SIZE - 4, 10);
+                    break;
+                    
+                case TILE_TYPES.PLANT:
+                    // 화분
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#38a169';
+                    ctx.beginPath();
+                    ctx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2 - 5, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#c05621';
+                    ctx.fillRect(px + 12, py + 22, 16, 12);
+                    break;
+                    
+                case TILE_TYPES.CABINET:
+                    // 캐비닛
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#718096';
+                    ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    ctx.strokeStyle = '#4a5568';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    ctx.fillStyle = '#2d3748';
+                    ctx.fillRect(px + 15, py + 15, 10, 3);
+                    break;
+            }
+            
+            // 그리드
+            ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+        }
+
+        // 맵 그리기
         function drawGame() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // 타일 배경 그리기
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                for (let x = 0; x < MAP_WIDTH; x++) {
-                    drawTile(x, y);
+            // 뷰포트 내의 타일만 그리기
+            for (let y = 0; y < VIEWPORT_HEIGHT; y++) {
+                for (let x = 0; x < VIEWPORT_WIDTH; x++) {
+                    const mapX = camera.x + x;
+                    const mapY = camera.y + y;
+                    drawTile(mapX, mapY, x, y);
                 }
             }
 
@@ -913,56 +1115,31 @@
             treasureAnimation += 0.05;
             (gameState.treasures || []).forEach(treasure => {
                 if (!treasure.found) {
-                    drawTreasureBox(treasure.x * TILE_SIZE, treasure.y * TILE_SIZE, treasureAnimation);
+                    const screenX = (treasure.x - camera.x) * TILE_SIZE;
+                    const screenY = (treasure.y - camera.y) * TILE_SIZE;
+                    
+                    // 화면 내에 있을 때만 그리기
+                    if (screenX >= -TILE_SIZE && screenX < canvas.width && 
+                        screenY >= -TILE_SIZE && screenY < canvas.height) {
+                        drawTreasureBox(screenX, screenY, treasureAnimation);
+                    }
                 }
             });
 
             // 플레이어 그리기
             Object.values(gameState.players || {}).forEach(player => {
-                drawPlayer(player);
+                const screenX = (player.x - camera.x) * TILE_SIZE;
+                const screenY = (player.y - camera.y) * TILE_SIZE;
+                
+                if (screenX >= -TILE_SIZE && screenX < canvas.width && 
+                    screenY >= -TILE_SIZE && screenY < canvas.height) {
+                    drawPlayer(player, screenX, screenY);
+                }
             });
             
-            // 미니맵 그리기
             if (minimapCtx) {
                 drawMinimap();
             }
-        }
-
-        function drawTile(x, y) {
-            const px = x * TILE_SIZE;
-            const py = y * TILE_SIZE;
-            
-            // 체크보드 패턴
-            const isDark = (x + y) % 2 === 0;
-            
-            if (isDark) {
-                // 진한 풀
-                const gradient = ctx.createLinearGradient(px, py, px + TILE_SIZE, py + TILE_SIZE);
-                gradient.addColorStop(0, '#7cb342');
-                gradient.addColorStop(1, '#689f38');
-                ctx.fillStyle = gradient;
-            } else {
-                // 밝은 풀
-                const gradient = ctx.createLinearGradient(px, py, px + TILE_SIZE, py + TILE_SIZE);
-                gradient.addColorStop(0, '#9ccc65');
-                gradient.addColorStop(1, '#8bc34a');
-                ctx.fillStyle = gradient;
-            }
-            
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            
-            // 풀 디테일
-            ctx.fillStyle = 'rgba(139, 195, 74, 0.3)';
-            for (let i = 0; i < 3; i++) {
-                const gx = px + (x * 7 + i * 11) % TILE_SIZE;
-                const gy = py + (y * 13 + i * 7) % TILE_SIZE;
-                ctx.fillRect(gx, gy, 2, 4);
-            }
-            
-            // 그리드 라인
-            ctx.strokeStyle = 'rgba(0,0,0,0.05)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
         }
 
         function drawTreasureBox(x, y, anim) {
@@ -971,29 +1148,24 @@
             const size = 28;
             const bounce = Math.sin(anim) * 2;
             
-            // 그림자
             ctx.fillStyle = 'rgba(0,0,0,0.2)';
             ctx.beginPath();
             ctx.ellipse(centerX, centerY + 15, size/2 + 2, 4, 0, 0, Math.PI * 2);
             ctx.fill();
             
-            // 상자 본체
             const gradient = ctx.createLinearGradient(centerX - size/2, centerY - size/2 + bounce, centerX + size/2, centerY + size/2 + bounce);
             gradient.addColorStop(0, '#ffa726');
             gradient.addColorStop(1, '#ff9800');
             ctx.fillStyle = gradient;
             ctx.fillRect(centerX - size/2, centerY - size/2 + bounce, size, size);
             
-            // 상자 테두리
             ctx.strokeStyle = '#f57c00';
             ctx.lineWidth = 2;
             ctx.strokeRect(centerX - size/2, centerY - size/2 + bounce, size, size);
             
-            // 뚜껑
             ctx.fillStyle = '#f57c00';
             ctx.fillRect(centerX - size/2, centerY - size/2 + bounce, size, 10);
             
-            // 자물쇠
             ctx.fillStyle = '#ffd54f';
             ctx.beginPath();
             ctx.arc(centerX, centerY + bounce, 6, 0, Math.PI * 2);
@@ -1002,7 +1174,6 @@
             ctx.fillStyle = '#f9a825';
             ctx.fillRect(centerX - 2, centerY + bounce, 4, 8);
             
-            // 반짝임 효과
             const sparkle = Math.abs(Math.sin(anim * 2));
             ctx.fillStyle = `rgba(255, 255, 255, ${sparkle * 0.8})`;
             ctx.beginPath();
@@ -1014,24 +1185,18 @@
             ctx.fill();
         }
 
-        function drawPlayer(player) {
-            // 플레이어 데이터 유효성 확인
-            if (!player || player.x === undefined || player.y === undefined) {
-                console.warn('Invalid player data:', player);
-                return;
-            }
+        function drawPlayer(player, screenX, screenY) {
+            if (!player || player.x === undefined || player.y === undefined) return;
             
-            const x = player.x * TILE_SIZE + TILE_SIZE / 2;
-            const y = player.y * TILE_SIZE + TILE_SIZE / 2;
+            const x = screenX + TILE_SIZE / 2;
+            const y = screenY + TILE_SIZE / 2;
             const size = 32;
             
-            // 그림자
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.beginPath();
             ctx.ellipse(x, y + 16, size/2, 6, 0, 0, Math.PI * 2);
             ctx.fill();
             
-            // 슬라임 몸체 (그라디언트)
             const gradient = ctx.createRadialGradient(x, y - 5, 0, x, y - 5, size/2);
             gradient.addColorStop(0, player.color || '#3498db');
             gradient.addColorStop(1, adjustBrightness(player.color || '#3498db', -30));
@@ -1045,14 +1210,12 @@
             ctx.arc(x, y - 2, size/2, 0, Math.PI * 2);
             ctx.fill();
             
-            // 테두리
             ctx.strokeStyle = adjustBrightness(player.color || '#3498db', -50);
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(x, y - 2, size/2, 0, Math.PI * 2);
             ctx.stroke();
             
-            // 눈
             ctx.fillStyle = 'white';
             ctx.beginPath();
             ctx.arc(x - 8, y - 7, 5, 0, Math.PI * 2);
@@ -1065,14 +1228,12 @@
             ctx.arc(x + 8, y - 7, 3, 0, Math.PI * 2);
             ctx.fill();
             
-            // 눈 하이라이트
             ctx.fillStyle = 'white';
             ctx.beginPath();
             ctx.arc(x - 9, y - 9, 1.5, 0, Math.PI * 2);
             ctx.arc(x + 7, y - 9, 1.5, 0, Math.PI * 2);
             ctx.fill();
             
-            // 입
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2.5;
             ctx.lineCap = 'round';
@@ -1080,7 +1241,6 @@
             ctx.arc(x, y + 2, 8, 0.2, Math.PI - 0.2);
             ctx.stroke();
             
-            // 이름 표시 (배경 추가)
             if (player.name) {
                 ctx.fillStyle = 'rgba(0,0,0,0.6)';
                 ctx.font = 'bold 13px Arial';
@@ -1099,36 +1259,44 @@
         function drawMinimap() {
             if (!minimap || !minimapCtx) return;
             
-            const scale = minimap.width / (MAP_WIDTH * TILE_SIZE);
+            const scaleX = minimap.width / MAP_WIDTH;
+            const scaleY = minimap.height / MAP_HEIGHT;
+            
             minimapCtx.clearRect(0, 0, minimap.width, minimap.height);
             
-            // 배경
-            minimapCtx.fillStyle = '#8bc34a';
-            minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
+            // 맵 그리기
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                for (let x = 0; x < MAP_WIDTH; x++) {
+                    const tile = gameState.map ? gameState.map[y][x] : TILE_TYPES.FLOOR;
+                    
+                    if (tile === TILE_TYPES.WALL) {
+                        minimapCtx.fillStyle = '#2d3748';
+                    } else if (tile === TILE_TYPES.FLOOR) {
+                        minimapCtx.fillStyle = '#cbd5e0';
+                    } else {
+                        minimapCtx.fillStyle = '#718096';
+                    }
+                    
+                    minimapCtx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
+                }
+            }
             
             // 보물
-            const treasures = gameState.treasures || [];
-            treasures.forEach(treasure => {
-                if (!treasure.found && treasure.x !== undefined && treasure.y !== undefined) {
+            (gameState.treasures || []).forEach(treasure => {
+                if (!treasure.found) {
                     minimapCtx.fillStyle = '#ff9800';
-                    const mx = treasure.x * TILE_SIZE * scale;
-                    const my = treasure.y * TILE_SIZE * scale;
-                    minimapCtx.fillRect(mx, my, 6, 6);
+                    minimapCtx.fillRect(treasure.x * scaleX, treasure.y * scaleY, 3, 3);
                 }
             });
             
             // 플레이어
-            const players = gameState.players || {};
-            Object.values(players).forEach(player => {
+            Object.values(gameState.players || {}).forEach(player => {
                 if (player.x !== undefined && player.y !== undefined) {
                     minimapCtx.fillStyle = player.color || '#3498db';
-                    const mx = player.x * TILE_SIZE * scale;
-                    const my = player.y * TILE_SIZE * scale;
                     minimapCtx.beginPath();
-                    minimapCtx.arc(mx + 3, my + 3, 4, 0, Math.PI * 2);
+                    minimapCtx.arc(player.x * scaleX, player.y * scaleY, 2, 0, Math.PI * 2);
                     minimapCtx.fill();
                     
-                    // 현재 플레이어 표시
                     if (currentPlayer && player.id === currentPlayer.id) {
                         minimapCtx.strokeStyle = 'white';
                         minimapCtx.lineWidth = 2;
@@ -1136,6 +1304,16 @@
                     }
                 }
             });
+            
+            // 뷰포트 표시
+            minimapCtx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.strokeRect(
+                camera.x * scaleX,
+                camera.y * scaleY,
+                VIEWPORT_WIDTH * scaleX,
+                VIEWPORT_HEIGHT * scaleY
+            );
         }
 
         // 컨트롤 설정
@@ -1151,19 +1329,19 @@
                 
                 switch(e.key) {
                     case 'ArrowUp':
-                        newY = Math.max(0, newY - 1);
+                        newY = currentPlayer.y - 1;
                         e.preventDefault();
                         break;
                     case 'ArrowDown':
-                        newY = Math.min(MAP_HEIGHT - 1, newY + 1);
+                        newY = currentPlayer.y + 1;
                         e.preventDefault();
                         break;
                     case 'ArrowLeft':
-                        newX = Math.max(0, newX - 1);
+                        newX = currentPlayer.x - 1;
                         e.preventDefault();
                         break;
                     case 'ArrowRight':
-                        newX = Math.min(MAP_WIDTH - 1, newX + 1);
+                        newX = currentPlayer.x + 1;
                         e.preventDefault();
                         break;
                     case ' ':
@@ -1172,7 +1350,8 @@
                         return;
                 }
                 
-                if (newX !== currentPlayer.x || newY !== currentPlayer.y) {
+                // 충돌 체크
+                if (isWalkable(newX, newY) && (newX !== currentPlayer.x || newY !== currentPlayer.y)) {
                     lastMoveTime = now;
                     currentPlayer.x = newX;
                     currentPlayer.y = newY;
@@ -1218,11 +1397,9 @@
 
         function showTreasureResult(isWinning) {
             const modal = document.getElementById('treasureModal');
-            const resultImg = document.getElementById('resultImage');
             const resultText = document.getElementById('resultText');
             
             modal.classList.add('active');
-            resultImg.style.display = 'none';
             
             setTimeout(() => {
                 if (isWinning) {
@@ -1247,7 +1424,6 @@
         // 게임 루프
         function gameLoop() {
             if (gameState.status === 'playing') {
-                // 게임 상태가 유효한지 확인
                 if (gameState.players && Object.keys(gameState.players).length > 0) {
                     drawGame();
                 }
@@ -1284,7 +1460,6 @@
             }
         }
 
-        // 재시작
         async function restartGame() {
             await database.ref(`rooms/${currentRoom}`).update({
                 status: 'lobby',
@@ -1308,7 +1483,6 @@
             location.reload();
         }
 
-        // 초기화
         initColorSelector();
     </script>
 </body>
