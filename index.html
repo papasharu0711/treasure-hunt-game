@@ -930,9 +930,18 @@
                 document.getElementById('startGameBtn').style.display = 'inline-block';
             }
 
+            // 플레이어 리스트 실시간 업데이트
             database.ref(`rooms/${currentRoom}/players`).on('value', (snapshot) => {
                 const players = snapshot.val() || {};
                 updatePlayerList(players);
+            });
+            
+            // 설정 실시간 동기화
+            database.ref(`rooms/${currentRoom}/settings`).on('value', (snapshot) => {
+                const settings = snapshot.val();
+                if (settings) {
+                    gameState.settings = settings;
+                }
             });
         }
 
@@ -1509,30 +1518,50 @@
             
             modal.classList.add('active');
             
-            // 영상 재생
+            // 초기화
+            video.style.display = 'none';
+            resultImg.style.display = 'none';
+            resultText.textContent = '';
+            
+            // 영상 URL 가져오기
             const videoUrl = gameState.settings?.openingVideoUrl || './assets/treasure-opening.mp4';
             
-            // 영상이 있으면 재생
+            // 영상 재생
             if (videoUrl && videoUrl !== '') {
                 video.src = videoUrl;
                 video.style.display = 'block';
-                video.play().catch(err => {
-                    console.log('Video play failed:', err);
+                video.currentTime = 0;
+                
+                // 영상 로드 완료 후 재생
+                video.onloadeddata = () => {
+                    console.log('Video loaded, duration:', video.duration);
+                    video.play().catch(err => {
+                        console.log('Video play failed:', err);
+                        // 영상 재생 실패하면 바로 결과 표시
+                        showResult();
+                    });
+                };
+                
+                // 영상 끝나면 결과 표시 (5초 후)
+                video.onended = () => {
+                    console.log('Video ended');
+                    showResult();
+                };
+                
+                // 영상 로드 실패하면 바로 결과 표시
+                video.onerror = () => {
+                    console.log('Video load failed');
                     video.style.display = 'none';
                     showResult();
-                });
-                
-                // 영상 끝나면 결과 표시
-                video.onended = showResult;
-                
-                // 영상 없으면 1초 후 결과 표시
-                setTimeout(showResult, 1000);
+                };
             } else {
+                // 영상이 없으면 바로 결과 표시
                 showResult();
             }
             
             function showResult() {
                 video.style.display = 'none';
+                video.pause();
                 
                 // 이미지 표시
                 if (isWinning) {
@@ -1574,8 +1603,10 @@
             
             video.pause();
             video.currentTime = 0;
+            video.src = '';
             video.style.display = 'none';
             resultImg.style.display = 'none';
+            resultImg.src = '';
             
             modal.classList.remove('active');
             document.getElementById('resultText').textContent = '';
@@ -1643,6 +1674,44 @@
             location.reload();
         }
 
+        // 파일 업로드 핸들러
+        function handleImageUpload(type, input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const dataUrl = e.target.result;
+                const settingKey = type === 'win' ? 'winImageUrl' : 'loseImageUrl';
+                
+                await database.ref(`rooms/${currentRoom}/settings/${settingKey}`).set(dataUrl);
+                alert(`${type === 'win' ? '당첨' : '꽝'} 이미지가 업로드되었습니다!`);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleVideoUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            // 파일 크기 체크 (10MB 제한)
+            if (file.size > 10 * 1024 * 1024) {
+                alert('영상 파일은 10MB 이하만 가능합니다!');
+                input.value = '';
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const dataUrl = e.target.result;
+                
+                await database.ref(`rooms/${currentRoom}/settings/openingVideoUrl`).set(dataUrl);
+                alert('보물상자 영상이 업로드되었습니다!');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 초기화
         initColorSelector();
     </script>
 </body>
