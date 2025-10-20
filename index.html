@@ -419,13 +419,16 @@
                     <input type="number" id="winningTreasures" min="1" max="10" value="3">
                     
                     <label><strong>당첨 이미지:</strong></label>
-                    <input type="file" id="winImage" accept="image/*">
+                    <input type="file" id="winImage" accept="image/*" onchange="handleImageUpload('win', this)">
+                    <p style="font-size: 12px; color: #666;">기본: assets/win.png</p>
                     
                     <label><strong>꽝 이미지:</strong></label>
-                    <input type="file" id="loseImage" accept="image/*">
+                    <input type="file" id="loseImage" accept="image/*" onchange="handleImageUpload('lose', this)">
+                    <p style="font-size: 12px; color: #666;">기본: assets/lose.png</p>
                     
                     <label><strong>보물상자 여는 영상 (MP4):</strong></label>
-                    <input type="file" id="openVideo" accept="video/mp4">
+                    <input type="file" id="openVideo" accept="video/mp4" onchange="handleVideoUpload(this)">
+                    <p style="font-size: 12px; color: #666;">기본: assets/treasure-opening.mp4</p>
                 </div>
             </div>
             
@@ -533,7 +536,13 @@
             players: {},
             treasures: [],
             winners: [],
-            map: []
+            map: [],
+            settings: {
+                winningTreasures: 3,
+                openingVideoUrl: './assets/treasure-opening.mp4',
+                winImageUrl: './assets/win.png',
+                loseImageUrl: './assets/lose.png'
+            }
         };
 
         // 카메라 설정
@@ -679,7 +688,8 @@
         // 충돌 체크
         function isWalkable(x, y) {
             if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return false;
-            if (!gameState.map || !gameState.map[y]) return true;
+            if (!gameState.map || !Array.isArray(gameState.map)) return true;
+            if (!gameState.map[y] || gameState.map[y][x] === undefined) return true;
             
             const tile = gameState.map[y][x];
             return tile === TILE_TYPES.FLOOR;
@@ -769,37 +779,49 @@
                 return;
             }
 
-            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            currentRoom = roomCode;
-            isHost = true;
-            
-            // 빈 공간 찾기
-            const startPos = findEmptySpace(generateOfficeMap());
-            
-            currentPlayer = {
-                id: Date.now().toString(),
-                name: name,
-                color: currentPlayer.color,
-                x: startPos.x,
-                y: startPos.y,
-                isHost: true
-            };
+            try {
+                const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                currentRoom = roomCode;
+                isHost = true;
+                
+                // 맵 생성
+                const officeMap = generateOfficeMap();
+                console.log('Map generated:', officeMap.length, 'x', officeMap[0].length);
+                
+                // 빈 공간 찾기
+                const startPos = findEmptySpace(officeMap);
+                console.log('Start position:', startPos);
+                
+                currentPlayer = {
+                    id: Date.now().toString(),
+                    name: name,
+                    color: currentPlayer.color,
+                    x: startPos.x,
+                    y: startPos.y,
+                    isHost: true
+                };
 
-            const officeMap = generateOfficeMap();
+                await database.ref(`rooms/${roomCode}`).set({
+                    host: currentPlayer.id,
+                    status: 'lobby',
+                    settings: {
+                        winningTreasures: 3,
+                        openingVideoUrl: './assets/treasure-opening.mp4',
+                        winImageUrl: './assets/win.png',
+                        loseImageUrl: './assets/lose.png'
+                    },
+                    map: officeMap,
+                    players: {
+                        [currentPlayer.id]: currentPlayer
+                    }
+                });
 
-            await database.ref(`rooms/${roomCode}`).set({
-                host: currentPlayer.id,
-                status: 'lobby',
-                settings: {
-                    winningTreasures: 3
-                },
-                map: officeMap,
-                players: {
-                    [currentPlayer.id]: currentPlayer
-                }
-            });
-
-            showLobby();
+                console.log('Room created successfully:', roomCode);
+                showLobby();
+            } catch (error) {
+                console.error('Error creating room:', error);
+                alert('방 생성 중 오류가 발생했습니다: ' + error.message);
+            }
         }
 
         // 빈 공간 찾기
@@ -1072,7 +1094,20 @@
 
         // 타일 그리기
         function drawTile(x, y, offsetX, offsetY) {
-            if (!gameState.map || !gameState.map[y] || gameState.map[y][x] === undefined) return;
+            // 맵 데이터 유효성 검사
+            if (!gameState.map || !Array.isArray(gameState.map)) {
+                // 기본 바닥 그리기
+                ctx.fillStyle = '#cbd5e0';
+                ctx.fillRect(offsetX * TILE_SIZE, offsetY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                return;
+            }
+            
+            if (!gameState.map[y] || gameState.map[y][x] === undefined) {
+                // 기본 바닥 그리기
+                ctx.fillStyle = '#cbd5e0';
+                ctx.fillRect(offsetX * TILE_SIZE, offsetY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                return;
+            }
             
             const tileType = gameState.map[y][x];
             const px = offsetX * TILE_SIZE;
@@ -1327,26 +1362,32 @@
             
             minimapCtx.clearRect(0, 0, minimap.width, minimap.height);
             
-            // 맵 그리기
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                for (let x = 0; x < MAP_WIDTH; x++) {
-                    const tile = gameState.map ? gameState.map[y][x] : TILE_TYPES.FLOOR;
-                    
-                    if (tile === TILE_TYPES.WALL) {
-                        minimapCtx.fillStyle = '#2d3748';
-                    } else if (tile === TILE_TYPES.FLOOR) {
-                        minimapCtx.fillStyle = '#cbd5e0';
-                    } else {
-                        minimapCtx.fillStyle = '#718096';
+            // 맵이 있을 때만 그리기
+            if (gameState.map && Array.isArray(gameState.map)) {
+                for (let y = 0; y < MAP_HEIGHT && y < gameState.map.length; y++) {
+                    for (let x = 0; x < MAP_WIDTH && gameState.map[y] && x < gameState.map[y].length; x++) {
+                        const tile = gameState.map[y][x];
+                        
+                        if (tile === TILE_TYPES.WALL) {
+                            minimapCtx.fillStyle = '#2d3748';
+                        } else if (tile === TILE_TYPES.FLOOR) {
+                            minimapCtx.fillStyle = '#cbd5e0';
+                        } else {
+                            minimapCtx.fillStyle = '#718096';
+                        }
+                        
+                        minimapCtx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
                     }
-                    
-                    minimapCtx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
                 }
+            } else {
+                // 맵이 없으면 기본 배경
+                minimapCtx.fillStyle = '#cbd5e0';
+                minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
             }
             
             // 보물
             (gameState.treasures || []).forEach(treasure => {
-                if (!treasure.found) {
+                if (!treasure.found && treasure.x !== undefined && treasure.y !== undefined) {
                     minimapCtx.fillStyle = '#ff9800';
                     minimapCtx.fillRect(treasure.x * scaleX, treasure.y * scaleY, 3, 3);
                 }
@@ -1369,14 +1410,16 @@
             });
             
             // 뷰포트 표시
-            minimapCtx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
-            minimapCtx.lineWidth = 2;
-            minimapCtx.strokeRect(
-                camera.x * scaleX,
-                camera.y * scaleY,
-                VIEWPORT_WIDTH * scaleX,
-                VIEWPORT_HEIGHT * scaleY
-            );
+            if (currentPlayer) {
+                minimapCtx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+                minimapCtx.lineWidth = 2;
+                minimapCtx.strokeRect(
+                    camera.x * scaleX,
+                    camera.y * scaleY,
+                    VIEWPORT_WIDTH * scaleX,
+                    VIEWPORT_HEIGHT * scaleY
+                );
+            }
         }
 
         // 컨트롤 설정
@@ -1460,27 +1503,81 @@
 
         function showTreasureResult(isWinning) {
             const modal = document.getElementById('treasureModal');
+            const video = document.getElementById('openingVideo');
+            const resultImg = document.getElementById('resultImage');
             const resultText = document.getElementById('resultText');
             
             modal.classList.add('active');
             
-            setTimeout(() => {
+            // 영상 재생
+            const videoUrl = gameState.settings?.openingVideoUrl || './assets/treasure-opening.mp4';
+            
+            // 영상이 있으면 재생
+            if (videoUrl && videoUrl !== '') {
+                video.src = videoUrl;
+                video.style.display = 'block';
+                video.play().catch(err => {
+                    console.log('Video play failed:', err);
+                    video.style.display = 'none';
+                    showResult();
+                });
+                
+                // 영상 끝나면 결과 표시
+                video.onended = showResult;
+                
+                // 영상 없으면 1초 후 결과 표시
+                setTimeout(showResult, 1000);
+            } else {
+                showResult();
+            }
+            
+            function showResult() {
+                video.style.display = 'none';
+                
+                // 이미지 표시
                 if (isWinning) {
+                    const winUrl = gameState.settings?.winImageUrl || './assets/win.png';
+                    if (winUrl && winUrl !== '') {
+                        resultImg.src = winUrl;
+                        resultImg.style.display = 'block';
+                        resultImg.onerror = () => {
+                            resultImg.style.display = 'none';
+                        };
+                    }
+                    
                     resultText.innerHTML = '🎉 당첨! 축하합니다! 🎉';
                     resultText.style.background = 'linear-gradient(135deg, #2ecc71 0%, #27ae60 100%)';
                     resultText.style.webkitBackgroundClip = 'text';
                     resultText.style.webkitTextFillColor = 'transparent';
                 } else {
+                    const loseUrl = gameState.settings?.loseImageUrl || './assets/lose.png';
+                    if (loseUrl && loseUrl !== '') {
+                        resultImg.src = loseUrl;
+                        resultImg.style.display = 'block';
+                        resultImg.onerror = () => {
+                            resultImg.style.display = 'none';
+                        };
+                    }
+                    
                     resultText.innerHTML = '😢 꽝! 다음 기회에...';
                     resultText.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
                     resultText.style.webkitBackgroundClip = 'text';
                     resultText.style.webkitTextFillColor = 'transparent';
                 }
-            }, 500);
+            }
         }
 
         function closeModal() {
-            document.getElementById('treasureModal').classList.remove('active');
+            const modal = document.getElementById('treasureModal');
+            const video = document.getElementById('openingVideo');
+            const resultImg = document.getElementById('resultImage');
+            
+            video.pause();
+            video.currentTime = 0;
+            video.style.display = 'none';
+            resultImg.style.display = 'none';
+            
+            modal.classList.remove('active');
             document.getElementById('resultText').textContent = '';
         }
 
