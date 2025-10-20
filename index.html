@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treasure Hunt Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+            max-width: 1200px;
+            width: 95%;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #764ba2;
+            margin-bottom: 20px;
+        }
+
+        /* 색상 선택 */
+        .color-selector {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .color-option {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 4px solid transparent;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+
+        .color-option.selected {
+            border-color: #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+
+        /* 슬라임 프리뷰 */
+        .slime-preview {
+            width: 80px;
+            height: 80px;
+            margin: 20px auto;
+        }
+
+        /* 입력 필드 */
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+
+        input[type="file"] {
+            margin: 10px 0;
+            padding: 10px;
+        }
+
+        /* 버튼 */
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* 플레이어 리스트 */
+        .player-list {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .player-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .player-slime {
+            width: 30px;
+            height: 30px;
+            margin-right: 10px;
+        }
+
+        /* 게임 맵 */
+        #gameCanvas {
+            border: 4px solid #333;
+            border-radius: 10px;
+            display: block;
+            margin: 20px auto;
+            background: #8bc34a;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        /* 게임 정보 */
+        .game-info {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .info-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        /* 모달 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 600px;
+        }
+
+        .modal-content img, .modal-content video {
+            max-width: 100%;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        /* 결과 화면 */
+        .winner-list {
+            background: #fff3cd;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .winner-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .winner-rank {
+            font-size: 24px;
+            font-weight: bold;
+            margin-right: 15px;
+            color: #f39c12;
+        }
+
+        /* 설정 섹션 */
+        .settings-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 시작 화면 -->
+        <div id="startScreen" class="screen active">
+            <h1>🎮 Treasure Hunt Game</h1>
+            <h2>캐릭터 설정</h2>
+            
+            <input type="text" id="playerName" placeholder="닉네임을 입력하세요" maxlength="10">
+            
+            <h3>슬라임 색상 선택</h3>
+            <div class="color-selector" id="colorSelector"></div>
+            
+            <div class="slime-preview" id="slimePreview"></div>
+            
+            <div class="button-group">
+                <button onclick="createRoom()">방 만들기</button>
+                <button onclick="showJoinRoom()">방 참가하기</button>
+            </div>
+            
+            <div id="joinRoomSection" style="display:none; margin-top: 20px;">
+                <input type="text" id="roomCode" placeholder="방 코드 입력">
+                <button onclick="joinRoom()">참가</button>
+            </div>
+        </div>
+
+        <!-- 로비 화면 -->
+        <div id="lobbyScreen" class="screen">
+            <h1>🏠 게임 로비</h1>
+            <h2>방 코드: <span id="displayRoomCode"></span></h2>
+            
+            <div id="hostSettings" style="display:none;">
+                <div class="settings-section">
+                    <h3>⚙️ 게임 설정 (방장 전용)</h3>
+                    <label>당첨 보물 개수:</label>
+                    <input type="number" id="winningTreasures" min="1" max="10" value="3">
+                    
+                    <label>당첨 이미지:</label>
+                    <input type="file" id="winImage" accept="image/*">
+                    
+                    <label>꽝 이미지:</label>
+                    <input type="file" id="loseImage" accept="image/*">
+                    
+                    <label>보물상자 여는 영상 (MP4):</label>
+                    <input type="file" id="openVideo" accept="video/mp4">
+                </div>
+            </div>
+            
+            <div class="player-list">
+                <h3>참가자 (0/10)</h3>
+                <div id="playerListContainer"></div>
+            </div>
+            
+            <div class="button-group">
+                <button id="startGameBtn" onclick="startGame()" style="display:none;">게임 시작</button>
+                <button onclick="leaveRoom()">나가기</button>
+            </div>
+        </div>
+
+        <!-- 게임 화면 -->
+        <div id="gameScreen" class="screen">
+            <h1>🎮 Treasure Hunt</h1>
+            
+            <div class="game-info">
+                <div class="info-item">
+                    <div class="info-label">남은 보물</div>
+                    <div class="info-value" id="remainingTreasures">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">발견한 보물</div>
+                    <div class="info-value" id="foundTreasures">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">플레이어</div>
+                    <div class="info-value" id="activePlayers">0</div>
+                </div>
+            </div>
+            
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <p>🎮 방향키로 이동 | 🎁 스페이스바로 보물상자 열기</p>
+            </div>
+        </div>
+
+        <!-- 결과 화면 -->
+        <div id="resultScreen" class="screen">
+            <h1>🏆 게임 종료!</h1>
+            
+            <div class="winner-list">
+                <h2>당첨자 명단</h2>
+                <div id="winnerListContainer"></div>
+            </div>
+            
+            <div class="button-group">
+                <button id="restartBtn" onclick="restartGame()" style="display:none;">다시 시작</button>
+                <button onclick="backToLobby()">로비로</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 보물상자 모달 -->
+    <div id="treasureModal" class="modal">
+        <div class="modal-content">
+            <video id="openingVideo" style="display:none;" autoplay></video>
+            <img id="resultImage" style="display:none;">
+            <h2 id="resultText"></h2>
+            <button onclick="closeModal()">닫기</button>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <script>
+        // Firebase 설정
+        const firebaseConfig = {
+            apiKey: "AIzaSyBG7UDZveCzyUjA3PVxikWM4YloIzAyrDA",
+            authDomain: "treasure-hunt-game-dccd5.firebaseapp.com",
+            databaseURL: "https://treasure-hunt-game-dccd5-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "treasure-hunt-game-dccd5",
+            storageBucket: "treasure-hunt-game-dccd5.firebasestorage.app",
+            messagingSenderId: "547278547303",
+            appId: "1:547278547303:web:458dfbef546bf5012f27c2"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const storage = firebase.storage();
+
+        // 게임 상태
+        let currentRoom = null;
+        let currentPlayer = null;
+        let isHost = false;
+        let gameState = {
+            players: {},
+            treasures: [],
+            winners: []
+        };
+
+        // 캔버스 설정
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const TILE_SIZE = 40;
+        const MAP_WIDTH = 20;
+        const MAP_HEIGHT = 15;
+
+        // 색상 옵션
+        const colors = [
+            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#e67e22', '#34495e', '#ff69b4', '#00ced1'
+        ];
+
+        // 슬라임 색상 선택기 생성
+        function initColorSelector() {
+            const selector = document.getElementById('colorSelector');
+            colors.forEach((color, index) => {
+                const option = document.createElement('div');
+                option.className = 'color-option';
+                option.style.background = color;
+                option.onclick = () => selectColor(color, option);
+                selector.appendChild(option);
+                
+                if (index === 0) {
+                    option.classList.add('selected');
+                    currentPlayer = { color: color };
+                    updateSlimePreview(color);
+                }
+            });
+        }
+
+        function selectColor(color, element) {
+            document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            currentPlayer.color = color;
+            updateSlimePreview(color);
+        }
+
+        function updateSlimePreview(color) {
+            const preview = document.getElementById('slimePreview');
+            preview.innerHTML = drawSlimeSVG(color, 80);
+        }
+
+        // 슬라임 SVG 생성
+        function drawSlimeSVG(color, size) {
+            return `
+                <svg width="${size}" height="${size}" viewBox="0 0 100 100">
+                    <defs>
+                        <radialGradient id="slimeGrad${color.replace('#','')}">
+                            <stop offset="0%" style="stop-color:${color};stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:${adjustBrightness(color, -30)};stop-opacity:1" />
+                        </radialGradient>
+                    </defs>
+                    <ellipse cx="50" cy="70" rx="45" ry="30" fill="url(#slimeGrad${color.replace('#','')})" />
+                    <circle cx="50" cy="45" r="35" fill="url(#slimeGrad${color.replace('#','')})" />
+                    <circle cx="35" cy="40" r="8" fill="white" />
+                    <circle cx="65" cy="40" r="8" fill="white" />
+                    <circle cx="37" cy="38" r="5" fill="black" />
+                    <circle cx="67" cy="38" r="5" fill="black" />
+                    <path d="M 35 55 Q 50 65 65 55" stroke="black" stroke-width="3" fill="none" stroke-linecap="round" />
+                </svg>
+            `;
+        }
+
+        function adjustBrightness(color, amount) {
+            const num = parseInt(color.replace('#', ''), 16);
+            const r = Math.max(0, Math.min(255, (num >> 16) + amount));
+            const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
+            const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
+            return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+        }
+
+        // 방 만들기
+        async function createRoom() {
+            const name = document.getElementById('playerName').value.trim();
+            if (!name) {
+                alert('닉네임을 입력해주세요!');
+                return;
+            }
+
+            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            currentRoom = roomCode;
+            isHost = true;
+            
+            currentPlayer = {
+                id: Date.now().toString(),
+                name: name,
+                color: currentPlayer.color,
+                x: Math.floor(Math.random() * MAP_WIDTH),
+                y: Math.floor(Math.random() * MAP_HEIGHT),
+                isHost: true
+            };
+
+            await database.ref(`rooms/${roomCode}`).set({
+                host: currentPlayer.id,
+                status: 'lobby',
+                settings: {
+                    winningTreasures: 3
+                },
+                players: {
+                    [currentPlayer.id]: currentPlayer
+                }
+            });
+
+            showLobby();
+        }
+
+        // 방 참가하기
+        function showJoinRoom() {
+            document.getElementById('joinRoomSection').style.display = 'block';
+        }
+
+        async function joinRoom() {
+            const name = document.getElementById('playerName').value.trim();
+            const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+            
+            if (!name || !roomCode) {
+                alert('닉네임과 방 코드를 입력해주세요!');
+                return;
+            }
+
+            const roomSnapshot = await database.ref(`rooms/${roomCode}`).once('value');
+            if (!roomSnapshot.exists()) {
+                alert('존재하지 않는 방입니다!');
+                return;
+            }
+
+            const roomData = roomSnapshot.val();
+            const playerCount = Object.keys(roomData.players || {}).length;
+            
+            if (playerCount >= 10) {
+                alert('방이 가득 찼습니다!');
+                return;
+            }
+
+            currentRoom = roomCode;
+            isHost = false;
+            
+            currentPlayer = {
+                id: Date.now().toString(),
+                name: name,
+                color: currentPlayer.color,
+                x: Math.floor(Math.random() * MAP_WIDTH),
+                y: Math.floor(Math.random() * MAP_HEIGHT),
+                isHost: false
+            };
+
+            await database.ref(`rooms/${roomCode}/players/${currentPlayer.id}`).set(currentPlayer);
+            showLobby();
+        }
+
+        // 로비 표시
+        function showLobby() {
+            document.getElementById('startScreen').classList.remove('active');
+            document.getElementById('lobbyScreen').classList.add('active');
+            document.getElementById('displayRoomCode').textContent = currentRoom;
+            
+            if (isHost) {
+                document.getElementById('hostSettings').style.display = 'block';
+                document.getElementById('startGameBtn').style.display = 'inline-block';
+            }
+
+            // 플레이어 리스트 실시간 업데이트
+            database.ref(`rooms/${currentRoom}/players`).on('value', (snapshot) => {
+                const players = snapshot.val() || {};
+                updatePlayerList(players);
+            });
+        }
+
+        function updatePlayerList(players) {
+            const container = document.getElementById('playerListContainer');
+            const count = Object.keys(players).length;
+            container.parentElement.querySelector('h3').textContent = `참가자 (${count}/10)`;
+            
+            container.innerHTML = '';
+            Object.values(players).forEach(player => {
+                const item = document.createElement('div');
+                item.className = 'player-item';
+                item.innerHTML = `
+                    <div class="player-slime">${drawSlimeSVG(player.color, 30)}</div>
+                    <strong>${player.name}</strong>
+                    ${player.isHost ? ' 👑' : ''}
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // 게임 시작
+        async function startGame() {
+            const winningCount = parseInt(document.getElementById('winningTreasures').value);
+            
+            // 보물 생성 (맵에 랜덤 배치)
+            const treasures = [];
+            for (let i = 0; i < 20; i++) {
+                treasures.push({
+                    id: i,
+                    x: Math.floor(Math.random() * MAP_WIDTH),
+                    y: Math.floor(Math.random() * MAP_HEIGHT),
+                    isWinning: i < winningCount,
+                    found: false
+                });
+            }
+
+            await database.ref(`rooms/${currentRoom}`).update({
+                status: 'playing',
+                treasures: treasures,
+                winners: []
+            });
+
+            showGame();
+        }
+
+        // 게임 화면 표시
+        function showGame() {
+            document.getElementById('lobbyScreen').classList.remove('active');
+            document.getElementById('gameScreen').classList.add('active');
+            
+            // 게임 상태 실시간 동기화
+            database.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
+                const room = snapshot.val();
+                if (room) {
+                    gameState = room;
+                    updateGameInfo();
+                    drawGame();
+                    
+                    if (room.status === 'finished') {
+                        showResults();
+                    }
+                }
+            });
+
+            // 키보드 컨트롤
+            setupControls();
+            
+            // 게임 루프 시작
+            gameLoop();
+        }
+
+        function updateGameInfo() {
+            const treasures = gameState.treasures || [];
+            const foundCount = treasures.filter(t => t.found).length;
+            const winningCount = treasures.filter(t => t.isWinning && !t.found).length;
+            
+            document.getElementById('remainingTreasures').textContent = winningCount;
+            document.getElementById('foundTreasures').textContent = foundCount;
+            document.getElementById('activePlayers').textContent = Object.keys(gameState.players || {}).length;
+        }
+
+        // 맵 그리기
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 타일 배경 그리기 (아케이드 스타일)
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                for (let x = 0; x < MAP_WIDTH; x++) {
+                    const tileType = (x + y) % 3;
+                    if (tileType === 0) {
+                        ctx.fillStyle = '#8bc34a';
+                    } else if (tileType === 1) {
+                        ctx.fillStyle = '#9ccc65';
+                    } else {
+                        ctx.fillStyle = '#aed581';
+                    }
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    
+                    // 그리드 라인
+                    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                    ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            }
+
+            // 보물상자 그리기
+            (gameState.treasures || []).forEach(treasure => {
+                if (!treasure.found) {
+                    drawTreasureBox(treasure.x * TILE_SIZE, treasure.y * TILE_SIZE);
+                }
+            });
+
+            // 플레이어 그리기
+            Object.values(gameState.players || {}).forEach(player => {
+                drawPlayer(player);
+            });
+        }
+
+        function drawTreasureBox(x, y) {
+            const centerX = x + TILE_SIZE / 2;
+            const centerY = y + TILE_SIZE / 2;
+            const size = 25;
+            
+            // 상자
+            ctx.fillStyle = '#ff9800';
+            ctx.fillRect(centerX - size/2, centerY - size/2, size, size);
+            
+            // 뚜껑
+            ctx.fillStyle = '#f57c00';
+            ctx.fillRect(centerX - size/2, centerY - size/2, size, 8);
+            
+            // 자물쇠
+            ctx.fillStyle = '#ffd54f';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 반짝임 효과
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(centerX - 5, centerY - 5, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawPlayer(player) {
+            const x = player.x * TILE_SIZE + TILE_SIZE / 2;
+            const y = player.y * TILE_SIZE + TILE_SIZE / 2;
+            const size = 28;
+            
+            // 슬라임 몸체
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.ellipse(x, y + 5, size/2, size/3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.arc(x, y - 2, size/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 눈
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(x - 6, y - 5, 4, 0, Math.PI * 2);
+            ctx.arc(x + 6, y - 5, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(x - 6, y - 5, 2, 0, Math.PI * 2);
+            ctx.arc(x + 6, y - 5, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 이름 표시
+            ctx.fillStyle = 'black';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(player.name, x, y + 25);
+        }
+
+        // 컨트롤 설정
+        function setupControls() {
+            document.addEventListener('keydown', async (e) => {
+                if (!currentPlayer || gameState.status !== 'playing') return;
+                
+                let newX = currentPlayer.x;
+                let newY = currentPlayer.y;
+                
+                switch(e.key) {
+                    case 'ArrowUp':
+                        newY = Math.max(0, newY - 1);
+                        break;
+                    case 'ArrowDown':
+                        newY = Math.min(MAP_HEIGHT - 1, newY + 1);
+                        break;
+                    case 'ArrowLeft':
+                        newX = Math.max(0, newX - 1);
+                        break;
+                    case 'ArrowRight':
+                        newX = Math.min(MAP_WIDTH - 1, newX + 1);
+                        break;
+                    case ' ':
+                        e.preventDefault();
+                        checkTreasure();
+                        return;
+                }
+                
+                if (newX !== currentPlayer.x || newY !== currentPlayer.y) {
+                    currentPlayer.x = newX;
+                    currentPlayer.y = newY;
+                    await database.ref(`rooms/${currentRoom}/players/${currentPlayer.id}`).update({
+                        x: newX,
+                        y: newY
+                    });
+                }
+            });
+        }
+
+        // 보물 확인
+        async function checkTreasure() {
+            const treasures = gameState.treasures || [];
+            const treasure = treasures.find(t => 
+                !t.found && 
+                t.x === currentPlayer.x && 
+                t.y === currentPlayer.y
+            );
+            
+            if (treasure) {
+                // 보물 발견!
+                treasure.found = true;
+                
+                // 영상 재생
+                showTreasureResult(treasure.isWinning);
+                
+                // 데이터베이스 업데이트
+                await database.ref(`rooms/${currentRoom}/treasures/${treasure.id}`).update({ found: true });
+                
+                if (treasure.isWinning) {
+                    const winners = gameState.winners || [];
+                    winners.push({
+                        name: currentPlayer.name,
+                        color: currentPlayer.color,
+                        time: Date.now()
+                    });
+                    await database.ref(`rooms/${currentRoom}/winners`).set(winners);
+                    
+                    // 모든 당첨 보물을 찾았는지 확인
+                    const allWinningFound = treasures.filter(t => t.isWinning).every(t => t.found);
+                    if (allWinningFound) {
+                        await database.ref(`rooms/${currentRoom}`).update({ status: 'finished' });
+                    }
+                }
+            }
+        }
+
+        function showTreasureResult(isWinning) {
+            const modal = document.getElementById('treasureModal');
+            const video = document.getElementById('openingVideo');
+            const resultImg = document.getElementById('resultImage');
+            const resultText = document.getElementById('resultText');
+            
+            modal.classList.add('active');
+            
+            // 영상이 있으면 재생 (여기서는 시뮬레이션)
+            video.style.display = 'none';
+            
+            // 결과 표시
+            setTimeout(() => {
+                resultImg.style.display = 'block';
+                if (isWinning) {
+                    resultText.textContent = '🎉 당첨! 축하합니다! 🎉';
+                    resultText.style.color = '#2ecc71';
+                } else {
+                    resultText.textContent = '😢 꽝! 다음 기회에...';
+                    resultText.style.color = '#e74c3c';
+                }
+            }, 1000);
+        }
+
+        function closeModal() {
+            document.getElementById('treasureModal').classList.remove('active');
+            document.getElementById('resultImage').style.display = 'none';
+            document.getElementById('resultText').textContent = '';
+        }
+
+        // 게임 루프
+        function gameLoop() {
+            if (gameState.status === 'playing') {
+                drawGame();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // 결과 표시
+        function showResults() {
+            document.getElementById('gameScreen').classList.remove('active');
+            document.getElementById('resultScreen').classList.add('active');
+            
+            const container = document.getElementById('winnerListContainer');
+            container.innerHTML = '';
+            
+            (gameState.winners || []).forEach((winner, index) => {
+                const item = document.createElement('div');
+                item.className = 'winner-item';
+                item.innerHTML = `
+                    <div class="winner-rank">${index + 1}등</div>
+                    <div class="player-slime">${drawSlimeSVG(winner.color, 30)}</div>
+                    <strong>${winner.name}</strong>
+                `;
+                container.appendChild(item);
+            });
+            
+            if (isHost) {
+                document.getElementById('restartBtn').style.display = 'inline-block';
+            }
+        }
+
+        // 재시작
+        async function restartGame() {
+            await database.ref(`rooms/${currentRoom}`).update({
+                status: 'lobby',
+                treasures: [],
+                winners: []
+            });
+            
+            document.getElementById('resultScreen').classList.remove('active');
+            document.getElementById('lobbyScreen').classList.add('active');
+        }
+
+        function backToLobby() {
+            document.getElementById('resultScreen').classList.remove('active');
+            document.getElementById('lobbyScreen').classList.add('active');
+        }
+
+        function leaveRoom() {
+            if (currentRoom && currentPlayer) {
+                database.ref(`rooms/${currentRoom}/players/${currentPlayer.id}`).remove();
+            }
+            location.reload();
+        }
+
+        // 초기화
+        initColorSelector();
+    </script>
+</body>
+</html>
