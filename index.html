@@ -781,9 +781,26 @@
         async function startGame() {
             const winningCount = parseInt(document.getElementById('winningTreasures').value);
             
+            // 현재 플레이어들의 위치 재확인
+            const playersSnapshot = await database.ref(`rooms/${currentRoom}/players`).once('value');
+            const players = playersSnapshot.val() || {};
+            
+            // 각 플레이어의 위치가 없으면 랜덤 배치
+            Object.keys(players).forEach(playerId => {
+                if (players[playerId].x === undefined || players[playerId].y === undefined) {
+                    players[playerId].x = Math.floor(Math.random() * MAP_WIDTH);
+                    players[playerId].y = Math.floor(Math.random() * MAP_HEIGHT);
+                }
+            });
+            
             // 보물 생성
             const treasures = [];
             const positions = new Set();
+            
+            // 플레이어 위치도 제외
+            Object.values(players).forEach(player => {
+                positions.add(`${player.x},${player.y}`);
+            });
             
             // 중복되지 않는 위치에 보물 배치
             while (treasures.length < 20) {
@@ -805,23 +822,57 @@
 
             await database.ref(`rooms/${currentRoom}`).update({
                 status: 'playing',
+                players: players,
                 treasures: treasures,
                 winners: []
+            });
+            
+            console.log('Game started with:', {
+                players: Object.keys(players).length,
+                treasures: treasures.length,
+                winning: winningCount
             });
 
             showGame();
         }
 
         // 게임 화면 표시
-        function showGame() {
+        async function showGame() {
             document.getElementById('lobbyScreen').classList.remove('active');
             document.getElementById('gameScreen').classList.add('active');
+            
+            // 게임 상태 먼저 로드
+            const roomSnapshot = await database.ref(`rooms/${currentRoom}`).once('value');
+            const room = roomSnapshot.val();
+            
+            if (room) {
+                gameState = room;
+                console.log('Game State Loaded:', gameState);
+                console.log('Players:', Object.keys(gameState.players || {}).length);
+                console.log('Treasures:', (gameState.treasures || []).length);
+                
+                // 현재 플레이어 정보 업데이트
+                if (gameState.players && gameState.players[currentPlayer.id]) {
+                    currentPlayer = gameState.players[currentPlayer.id];
+                }
+                
+                updateGameInfo();
+                
+                // 첫 렌더링
+                drawGame();
+            }
             
             // 게임 상태 실시간 동기화
             database.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
                 const room = snapshot.val();
                 if (room) {
                     gameState = room;
+                    
+                    // 현재 플레이어 정보 업데이트
+                    if (gameState.players && gameState.players[currentPlayer.id]) {
+                        currentPlayer = gameState.players[currentPlayer.id];
+                    }
+                    
                     updateGameInfo();
                     
                     if (room.status === 'finished') {
@@ -964,6 +1015,12 @@
         }
 
         function drawPlayer(player) {
+            // 플레이어 데이터 유효성 확인
+            if (!player || player.x === undefined || player.y === undefined) {
+                console.warn('Invalid player data:', player);
+                return;
+            }
+            
             const x = player.x * TILE_SIZE + TILE_SIZE / 2;
             const y = player.y * TILE_SIZE + TILE_SIZE / 2;
             const size = 32;
@@ -976,8 +1033,8 @@
             
             // 슬라임 몸체 (그라디언트)
             const gradient = ctx.createRadialGradient(x, y - 5, 0, x, y - 5, size/2);
-            gradient.addColorStop(0, player.color);
-            gradient.addColorStop(1, adjustBrightness(player.color, -30));
+            gradient.addColorStop(0, player.color || '#3498db');
+            gradient.addColorStop(1, adjustBrightness(player.color || '#3498db', -30));
             
             ctx.fillStyle = gradient;
             ctx.beginPath();
@@ -989,7 +1046,7 @@
             ctx.fill();
             
             // 테두리
-            ctx.strokeStyle = adjustBrightness(player.color, -50);
+            ctx.strokeStyle = adjustBrightness(player.color || '#3498db', -50);
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(x, y - 2, size/2, 0, Math.PI * 2);
@@ -1024,21 +1081,23 @@
             ctx.stroke();
             
             // 이름 표시 (배경 추가)
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
-            ctx.beginPath();
-            const textWidth = ctx.measureText(player.name).width;
-            ctx.roundRect(x - textWidth/2 - 5, y + 22, textWidth + 10, 18, 5);
-            ctx.fill();
-            
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 13px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(player.name, x, y + 35);
+            if (player.name) {
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.font = 'bold 13px Arial';
+                const textWidth = ctx.measureText(player.name).width;
+                ctx.beginPath();
+                ctx.roundRect(x - textWidth/2 - 5, y + 22, textWidth + 10, 18, 5);
+                ctx.fill();
+                
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.fillText(player.name, x, y + 35);
+            }
         }
 
         // 미니맵 그리기
         function drawMinimap() {
-            if (!minimap) return;
+            if (!minimap || !minimapCtx) return;
             
             const scale = minimap.width / (MAP_WIDTH * TILE_SIZE);
             minimapCtx.clearRect(0, 0, minimap.width, minimap.height);
@@ -1048,8 +1107,9 @@
             minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
             
             // 보물
-            (gameState.treasures || []).forEach(treasure => {
-                if (!treasure.found) {
+            const treasures = gameState.treasures || [];
+            treasures.forEach(treasure => {
+                if (!treasure.found && treasure.x !== undefined && treasure.y !== undefined) {
                     minimapCtx.fillStyle = '#ff9800';
                     const mx = treasure.x * TILE_SIZE * scale;
                     const my = treasure.y * TILE_SIZE * scale;
@@ -1058,19 +1118,22 @@
             });
             
             // 플레이어
-            Object.values(gameState.players || {}).forEach(player => {
-                minimapCtx.fillStyle = player.color;
-                const mx = player.x * TILE_SIZE * scale;
-                const my = player.y * TILE_SIZE * scale;
-                minimapCtx.beginPath();
-                minimapCtx.arc(mx + 3, my + 3, 4, 0, Math.PI * 2);
-                minimapCtx.fill();
-                
-                // 현재 플레이어 표시
-                if (player.id === currentPlayer.id) {
-                    minimapCtx.strokeStyle = 'white';
-                    minimapCtx.lineWidth = 2;
-                    minimapCtx.stroke();
+            const players = gameState.players || {};
+            Object.values(players).forEach(player => {
+                if (player.x !== undefined && player.y !== undefined) {
+                    minimapCtx.fillStyle = player.color || '#3498db';
+                    const mx = player.x * TILE_SIZE * scale;
+                    const my = player.y * TILE_SIZE * scale;
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(mx + 3, my + 3, 4, 0, Math.PI * 2);
+                    minimapCtx.fill();
+                    
+                    // 현재 플레이어 표시
+                    if (currentPlayer && player.id === currentPlayer.id) {
+                        minimapCtx.strokeStyle = 'white';
+                        minimapCtx.lineWidth = 2;
+                        minimapCtx.stroke();
+                    }
                 }
             });
         }
@@ -1184,7 +1247,10 @@
         // 게임 루프
         function gameLoop() {
             if (gameState.status === 'playing') {
-                drawGame();
+                // 게임 상태가 유효한지 확인
+                if (gameState.players && Object.keys(gameState.players).length > 0) {
+                    drawGame();
+                }
                 requestAnimationFrame(gameLoop);
             }
         }
