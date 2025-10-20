@@ -378,43 +378,6 @@
             margin-top: 20px;
             flex-wrap: wrap;
         }
-
-        /* 음악 컨트롤 버튼 */
-        #musicControl {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 999;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 60px;
-            height: 60px;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #musicControl.active {
-            display: flex;
-        }
-
-        #musicControl:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-        }
-
-        #musicControl:active {
-            transform: scale(0.95);
-        }
-
-        #musicIcon {
-            font-size: 24px;
-            color: white;
-            user-select: none;
-        }
     </style>
 </head>
 <body>
@@ -544,17 +507,6 @@
         </div>
     </div>
 
-    <!-- 배경음악 -->
-    <audio id="bgMusic" loop preload="auto">
-        <source src="./assets/bgm.mp3" type="audio/mpeg">
-        <source src="./assets/bgm.ogg" type="audio/ogg">
-    </audio>
-
-    <!-- 음악 컨트롤 버튼 -->
-    <div id="musicControl" onclick="toggleMusic()">
-        <span id="musicIcon">🔊</span>
-    </div>
-
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
@@ -575,49 +527,6 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
         const storage = firebase.storage();
-
-        // 배경음악 제어
-        const bgMusic = document.getElementById('bgMusic');
-        const musicControl = document.getElementById('musicControl');
-        const musicIcon = document.getElementById('musicIcon');
-        let isMusicPlaying = false;
-
-        // 음악 재생 함수
-        function playBackgroundMusic() {
-            if (bgMusic && !isMusicPlaying) {
-                bgMusic.volume = 0.3; // 볼륨 30%
-                bgMusic.play().then(() => {
-                    isMusicPlaying = true;
-                    musicControl.classList.add('active');
-                    musicIcon.textContent = '🔊';
-                    console.log('Background music started');
-                }).catch(err => {
-                    console.log('Music play failed (user interaction required):', err);
-                    // 사용자 클릭 후 재생 시도
-                    document.addEventListener('click', function playOnClick() {
-                        bgMusic.play().then(() => {
-                            isMusicPlaying = true;
-                            musicControl.classList.add('active');
-                            musicIcon.textContent = '🔊';
-                            document.removeEventListener('click', playOnClick);
-                        }).catch(() => {});
-                    }, { once: true });
-                });
-            }
-        }
-
-        // 음악 토글
-        function toggleMusic() {
-            if (bgMusic.paused) {
-                bgMusic.play();
-                isMusicPlaying = true;
-                musicIcon.textContent = '🔊';
-            } else {
-                bgMusic.pause();
-                isMusicPlaying = false;
-                musicIcon.textContent = '🔇';
-            }
-        }
 
         // 게임 상태
         let currentRoom = null;
@@ -1008,9 +917,6 @@
             document.getElementById('startScreen').classList.remove('active');
             document.getElementById('lobbyScreen').classList.add('active');
             document.getElementById('displayRoomCode').textContent = currentRoom;
-            
-            // 🎵 배경음악 재생 시작
-            playBackgroundMusic();
             
             // 맵 데이터 로드
             const roomSnapshot = await database.ref(`rooms/${currentRoom}`).once('value');
