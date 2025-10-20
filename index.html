@@ -943,6 +943,21 @@
                     gameState.settings = settings;
                 }
             });
+            
+            // 🎯 게임 상태 감시 - 방장이 게임 시작하면 모든 참가자도 자동 이동
+            database.ref(`rooms/${currentRoom}/status`).on('value', (snapshot) => {
+                const status = snapshot.val();
+                console.log('Room status changed:', status);
+                
+                if (status === 'playing') {
+                    // 로비 화면이 활성화되어 있을 때만 게임 화면으로 이동
+                    const lobbyScreen = document.getElementById('lobbyScreen');
+                    if (lobbyScreen && lobbyScreen.classList.contains('active')) {
+                        console.log('Game started! Moving to game screen...');
+                        showGame();
+                    }
+                }
+            });
         }
 
         function updatePlayerList(players) {
@@ -1037,6 +1052,15 @@
 
         // 게임 화면 표시
         async function showGame() {
+            // 이미 게임 화면이 활성화되어 있으면 중복 호출 방지
+            const gameScreen = document.getElementById('gameScreen');
+            if (gameScreen && gameScreen.classList.contains('active')) {
+                console.log('Game screen already active, skipping...');
+                return;
+            }
+            
+            console.log('Showing game screen...');
+            
             document.getElementById('lobbyScreen').classList.remove('active');
             document.getElementById('gameScreen').classList.add('active');
             
@@ -1432,7 +1456,18 @@
         }
 
         // 컨트롤 설정
+        let controlsSetup = false;
+        
         function setupControls() {
+            // 이미 설정되어 있으면 중복 방지
+            if (controlsSetup) {
+                console.log('Controls already setup, skipping...');
+                return;
+            }
+            
+            controlsSetup = true;
+            console.log('Setting up controls...');
+            
             document.addEventListener('keydown', async (e) => {
                 if (!currentPlayer || gameState.status !== 'playing') return;
                 
@@ -1613,12 +1648,16 @@
         }
 
         // 게임 루프
+        let gameLoopRunning = false;
+        
         function gameLoop() {
             if (gameState.status === 'playing') {
                 if (gameState.players && Object.keys(gameState.players).length > 0) {
                     drawGame();
                 }
                 requestAnimationFrame(gameLoop);
+            } else {
+                gameLoopRunning = false;
             }
         }
 
@@ -1658,13 +1697,25 @@
                 winners: []
             });
             
+            // 모든 리스너 제거
+            database.ref(`rooms/${currentRoom}`).off();
+            
             document.getElementById('resultScreen').classList.remove('active');
             document.getElementById('lobbyScreen').classList.add('active');
+            
+            // 로비 다시 초기화
+            showLobby();
         }
 
         function backToLobby() {
+            // 모든 리스너 제거
+            database.ref(`rooms/${currentRoom}`).off();
+            
             document.getElementById('resultScreen').classList.remove('active');
             document.getElementById('lobbyScreen').classList.add('active');
+            
+            // 로비 다시 초기화
+            showLobby();
         }
 
         function leaveRoom() {
